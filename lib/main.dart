@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
+import 'services/supabase_service.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await SupabaseService().initialize();
+  runApp(const MyApp());  
 }
 
 class MyApp extends StatelessWidget {

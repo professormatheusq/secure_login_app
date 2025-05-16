@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'dart:convert';
+import 'services/supabase_service.dart';
+import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -15,32 +16,38 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordCtrl = TextEditingController();
   final _storage = const FlutterSecureStorage();
   String? _storedToken;
+  bool _isLoading = false;
 
-  final _mockUsers = {
-    'usuario@email.com': '123456',
-    'admin@weg.net': 'admin123',
-  };
-
-  Future<void> _simulateLogin() async {
+  Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      final email = _emailCtrl.text.trim();
-      final password = _passwordCtrl.text;
-
-      if (_mockUsers[email] == password) {
-        const seed = 'SEGURA';
-        final raw = '$email:$password:$seed';
-        final token = base64.encode(utf8.encode(raw));
-
-        await _storage.write(key: 'token', value: token);
-        setState(() => _storedToken = token);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Login realizado com sucesso!')),
+      setState(() => _isLoading = true);
+      
+      try {
+        final response = await SupabaseService().supabaseClient.auth.signInWithPassword(
+          email: _emailCtrl.text.trim(),
+          password: _passwordCtrl.text,
         );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Email ou senha inválidos')),
-        );
+
+        if (response.session != null) {
+          await _storage.write(key: 'token', value: response.session!.accessToken);
+          setState(() => _storedToken = response.session!.accessToken);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Login realizado com sucesso!')),
+            );
+          }
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Erro ao fazer login: ${error.toString()}')),
+          );
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     }
   }
@@ -51,8 +58,17 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _logout() async {
-    await _storage.delete(key: 'token');
-    setState(() => _storedToken = null);
+    try {
+      await SupabaseService().supabaseClient.auth.signOut();
+      await _storage.delete(key: 'token');
+      setState(() => _storedToken = null);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao fazer logout: ${error.toString()}')),
+        );
+      }
+    }
   }
 
   @override
@@ -74,11 +90,9 @@ class _LoginPageState extends State<LoginPage> {
                     const Icon(Icons.lock_open, size: 64, color: Colors.green),
                     const SizedBox(height: 20),
                     Text(
-                      'Token armazenado:',
+                      'Usuário autenticado',
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    const SizedBox(height: 8),
-                    SelectableText(_storedToken!),
                     const SizedBox(height: 20),
                     ElevatedButton.icon(
                       onPressed: _logout,
@@ -126,13 +140,29 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       const SizedBox(height: 20),
                       ElevatedButton.icon(
-                        onPressed: _simulateLogin,
-                        icon: const Icon(Icons.login),
-                        label: const Text('Entrar'),
+                        onPressed: _isLoading ? null : _login,
+                        icon: _isLoading 
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.login),
+                        label: Text(_isLoading ? 'Entrando...' : 'Entrar'),
                         style: ElevatedButton.styleFrom(
                           minimumSize: const Size.fromHeight(50),
                         ),
-                      )
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const SignUpPage()),
+                          );
+                        },
+                        child: const Text('Não tem uma conta? Cadastre-se'),
+                      ),
                     ],
                   ),
                 ),
